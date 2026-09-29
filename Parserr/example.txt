@@ -1,0 +1,3 @@
+'position_x':2
+'position_y':10
+'position_z':20

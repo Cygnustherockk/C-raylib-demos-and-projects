@@ -1,0 +1,1 @@
+gcc main.c src/player.c src/enemy.c src/vectormath.c -O2 -o game -I include -L lib -lraylib -lgdi32 -lwinmm -Wall --all-warnings 
