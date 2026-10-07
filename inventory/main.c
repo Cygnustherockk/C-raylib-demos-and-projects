@@ -2,13 +2,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 #include "src/parser.h"
 #include "src/player.h"
+#include "src/terminal.h"
 
-#define BUFFER_SIZE 4096
-#define SAMPLE_RATE 48000
 #define GAME_ITEM ".gitm"
 
 Vector2 lookRotation = { 0 };
@@ -67,7 +65,7 @@ int main(void)
   InitWindow(500, 500, "Game");
   SetTargetFPS(60);
 
-  DisableCursor();
+  //DisableCursor();
 
   Camera camera = { 0 };
   camera.fovy = 60.0f;
@@ -83,6 +81,7 @@ int main(void)
 
   while(!WindowShouldClose())
   {
+
     Vector2 mouseDelta = GetMouseDelta();
     lookRotation.x -= mouseDelta.x*sensitivity.x;
     lookRotation.y += mouseDelta.y*sensitivity.y;
@@ -122,6 +121,7 @@ int main(void)
     ClearBackground(BLUE);
     DrawCubeV((Vector3){0, 0, 0}, (Vector3){10, 10, 10}, RED);
     EndMode3D();
+    HandleTerminal();
     EndDrawing();
   }
   
