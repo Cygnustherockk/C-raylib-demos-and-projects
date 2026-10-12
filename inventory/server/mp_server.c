@@ -8,10 +8,6 @@
 
 #define HOST "127.0.0.1"
 #define PORT 7000
-#define BUFFER_SIZE 1000
-
-
-#define HANDSHAKE "Handshake"
 
 ENetAddress address = {0};
 ENetHost *server = {0};
@@ -22,19 +18,18 @@ bool online = true;
 
 int current_player_count = 0;
 
-
 typedef struct PlayerData{
   bool active;
   bool validPosition;
   ENetPeer *peer;
 
-  int16_t X;
-  int16_t Y;
-  int16_t Z;
+  float X;
+  float Y;
+  float Z;
 
-  int16_t DX;
-  int16_t DY;
-  int16_t DZ;
+  float DX;
+  float DY;
+  float DZ;
 }PlayerData;
 
 PlayerData players[MAX_PLAYER_COUNT] = {0};
@@ -123,17 +118,17 @@ int main()
           for(int i = 0; i < MAX_PLAYER_COUNT; i++)
           {
             if(i == playerID || !players[i].validPosition)continue;
-            uint8_t addBuffer[14] = {0};
+            uint8_t addBuffer[26] = {0};
             addBuffer[0] = (uint8_t)add_player;
             addBuffer[1] = (uint8_t)i;
-            *(uint16_t*)(addBuffer + 2) = (uint16_t)players[i].X;
-            *(uint16_t*)(addBuffer + 4) = (uint16_t)players[i].Y;
-            *(uint16_t*)(addBuffer + 6) = (uint16_t)players[i].Z;
-            *(uint16_t*)(addBuffer + 8) = (uint16_t)players[i].DX;
-            *(uint16_t*)(addBuffer + 10) = (uint16_t)players[i].DY;
-            *(uint16_t*)(addBuffer + 12) = (uint16_t)players[i].DZ;
+            *(float*)(addBuffer+2) = (float)players[i].X;
+            *(float*)(addBuffer+6) = (float)players[i].Y;
+            *(float*)(addBuffer+10) = (float)players[i].Z;
+            *(float*)(addBuffer+14) = (float)players[i].DX;
+            *(float*)(addBuffer+18) = (float)players[i].DY;
+            *(float*)(addBuffer+22) = (float)players[i].DZ;
 
-            packet = enet_packet_create(addBuffer, 14, ENET_PACKET_FLAG_RELIABLE);
+            packet = enet_packet_create(addBuffer, 26, ENET_PACKET_FLAG_RELIABLE);
             enet_peer_send(event.peer, 0, packet);
           }
         }
@@ -154,12 +149,12 @@ int main()
 
           if(command == update_input)
           {
-            players[playerID].X = ReadShort(event.packet, &offset);
-            players[playerID].Y = ReadShort(event.packet, &offset);
-            players[playerID].Z = ReadShort(event.packet, &offset);
-            players[playerID].DX = ReadShort(event.packet, &offset);
-            players[playerID].DY = ReadShort(event.packet, &offset);
-            players[playerID].DZ = ReadShort(event.packet, &offset);
+            players[playerID].X = ReadFloat(event.packet, &offset);
+            players[playerID].Y = ReadFloat(event.packet, &offset);
+            players[playerID].Z = ReadFloat(event.packet, &offset);
+            players[playerID].DX = ReadFloat(event.packet, &offset);
+            players[playerID].DY = ReadFloat(event.packet, &offset);
+            players[playerID].DZ = ReadFloat(event.packet, &offset);
 
             NetworkCommands outbound_command = update_player;
 
@@ -167,17 +162,17 @@ int main()
 
             players[playerID].validPosition = true;
 
-						uint8_t buffer[14] = { 0 };
+						uint8_t buffer[26] = { 0 };
 						buffer[0] = (uint8_t)outbound_command;
 						buffer[1] = (uint8_t)playerID;
-						*(int16_t*)(buffer + 2) = (int16_t)players[playerID].X;
-						*(int16_t*)(buffer + 4) = (int16_t)players[playerID].Y;
-						*(int16_t*)(buffer + 6) = (int16_t)players[playerID].Z;
-						*(int16_t*)(buffer + 8) = (int16_t)players[playerID].DX;
-						*(int16_t*)(buffer + 10) = (int16_t)players[playerID].DY;
-						*(int16_t*)(buffer + 12) = (int16_t)players[playerID].DZ;
+						*(float*)(buffer+2) = players[playerID].X;
+						*(float*)(buffer+6) = players[playerID].Y;
+						*(float*)(buffer+10) = players[playerID].Z;
+						*(float*)(buffer+14) = players[playerID].DX;
+						*(float*)(buffer+18) = players[playerID].DY;
+						*(float*)(buffer+22) = players[playerID].DZ;
 
-						ENetPacket* packet = enet_packet_create(buffer, 14, ENET_PACKET_FLAG_RELIABLE);
+						ENetPacket* packet = enet_packet_create(buffer, 26, ENET_PACKET_FLAG_RELIABLE);
 						SendToAllBut(packet, playerID);
           }
         

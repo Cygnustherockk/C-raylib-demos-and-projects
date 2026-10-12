@@ -11,13 +11,7 @@
 
 #define HOST "127.0.0.1"
 #define PORT 7000
-#define CLIENT_BUFFER_SIZE 1000
-
-#define KILL "Kill"
-
-#define CONNECTED "connected"
-#define HANDSHAKE "Handshake"
-
+  
 typedef enum{
   Connecting,
   Playing,

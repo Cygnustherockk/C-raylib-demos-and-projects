@@ -22,4 +22,5 @@ typedef enum{
 
 uint8_t ReadByte(ENetPacket* packet, size_t* offset);
 int16_t ReadShort(ENetPacket* packet, size_t* offset);
+float ReadFloat(ENetPacket* packet, size_t* offset);
 #endif

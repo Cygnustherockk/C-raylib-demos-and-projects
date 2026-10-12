@@ -25,3 +25,21 @@ int16_t ReadShort(ENetPacket* packet, size_t* offset)
 
 	return *(int16_t*)data;
 }
+
+float ReadFloat(ENetPacket* packet, size_t* offset)
+{
+  if(*offset > packet->dataLength) return 0;
+
+  float f = 0;
+
+  uint8_t data[4];
+  data[0] = (uint8_t)packet->data[*offset];
+  data[1] = (uint8_t)packet->data[*offset+1];
+  data[2] = (uint8_t)packet->data[*offset+2];
+  data[3] = (uint8_t)packet->data[*offset+3];
+  memcpy(&f, data, sizeof(data));
+
+  *offset = (*offset) + 4;
+
+  return f;
+}

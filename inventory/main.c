@@ -11,8 +11,6 @@
 #define ENET_IMPLEMENTATION
 #include "src/mp_client.h"
 
-
-#define BUFFER_SIZE 4096
 #define GAME_ITEM ".gitm"
 
 #define TARGET_FPS 60
@@ -89,12 +87,9 @@ void HandleLocalPlayerMovement()
   UpdateCameraFPS(&camera, &lookRotation, &lean, headTimer, walkLerp);
 }
 
-
-
 void UpdateGame()
 {
   EnetHandler(GetTime());
-
   switch(game_state)
   {
     case Disconnected:
@@ -190,15 +185,9 @@ int main(void)
 
   camera.fovy = 60.0f;
   camera.projection = CAMERA_PERSPECTIVE;
-  camera.position = (Vector3)
-  {
-    player.position.x,
-    player.position.y + (BOTTOM_HEIGHT + headLerp),
-    player.position.z,
-  };
+  camera.position = (Vector3){player.position.x, player.position.y + (BOTTOM_HEIGHT + headLerp),player.position.z};
 
   UpdateCameraFPS(&camera, &lookRotation, &lean, headTimer, walkLerp);
-
 
   while(run_game)
   {
