@@ -28,8 +28,6 @@ typedef struct Body{
   bool is_on_floor;
 }Body;
 
-static Vector2 sensitivity = { 0.1f, 0.1f };
-
 void UpdateCameraFPS(Camera *camera, Vector2 *lookRotation, Vector2 *lean, float headTimer, float walkLerp);
 void UpdateBody(Body *body, float rot, char side, char forward, bool jumpPressed, bool crouchHold);
 

@@ -65,7 +65,7 @@ int main(int argc, char* argv[])
   else
   {
     printf("%.3f [INFO]: 'lib' directory found!\n", GET_TIME(time));
-    strcat(command, "-L lib -lraylib -lgdi32 -lwinmm ");
+    strcat(command, "-L lib -lraylib -lgdi32 -lwinmm -lws2_32 ");
   }
 
   strcat(command, "-Wall -Wextra -Wpedantic -o ");

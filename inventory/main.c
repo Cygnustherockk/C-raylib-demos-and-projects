@@ -4,8 +4,19 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "src/parser.h"
-#include "src/player.h"
+#ifdef __linux__
+#define PLATFORM "Linux"
+#include <socket.h>
+#endif
+
+#include "src/f_parser.h"
+#include "src/p_player.h"
+
+#define ENET_DLL
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
+#define ENET_IMPLEMENTATION
+#include "src/mp_client.h"
+
 
 #define BUFFER_SIZE 4096
 #define SAMPLE_RATE 48000
@@ -38,6 +49,7 @@ FilePathList path_list;
 ItemRegistry item_registry;
 
 static Body player = {0};
+static Vector2 sensitivity = { 0.01f, 0.01f };
 
 int main(void)
 {
@@ -69,6 +81,8 @@ int main(void)
 
   DisableCursor();
 
+  
+
   Camera camera = { 0 };
   camera.fovy = 60.0f;
   camera.projection = CAMERA_PERSPECTIVE;
@@ -81,8 +95,14 @@ int main(void)
 
   UpdateCameraFPS(&camera, &lookRotation, &lean, headTimer, walkLerp);
 
+
+
+
+
   while(!WindowShouldClose())
   {
+
+
     Vector2 mouseDelta = GetMouseDelta();
     lookRotation.x -= mouseDelta.x*sensitivity.x;
     lookRotation.y += mouseDelta.y*sensitivity.y;
@@ -117,12 +137,16 @@ int main(void)
 
     UpdateCameraFPS(&camera, &lookRotation, &lean, headTimer, walkLerp);
 
+    Client();
+
     BeginDrawing();
     BeginMode3D(camera);
     ClearBackground(BLUE);
     DrawCubeV((Vector3){0, 0, 0}, (Vector3){10, 10, 10}, RED);
     EndMode3D();
     EndDrawing();
+
+
   }
   
   return 0;
