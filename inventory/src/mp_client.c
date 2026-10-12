@@ -1,78 +1,240 @@
 #include "mp_client.h"
 
-int Client(void)
+int local_playerID = -1;
+
+ENetHost *client = {0};
+ENetAddress address = {0};
+ENetEvent event = {0};
+ENetPeer *server = {0};
+ENetPacket *packet = {0};
+int connected = 0;
+
+double last_input_sent = -100;
+
+double input_update_interval = 1.0f/20.0f;
+
+double last_now = 0;
+
+bool want_disconnect = false;
+
+typedef struct RemotePlayer{
+  bool active;
+  Vector3 position;
+  Vector3 direction;
+  double update_time;
+  Vector3 extrapolated_position;
+}RemotePlayer;
+
+RemotePlayer players[MAX_PLAYER_COUNT] = {0};
+
+void InitEnetGameClient(const char* server_address)
 {
-  if (enet_initialize() != 0) {
-    fprintf(stderr, "An error occurred while initializing ENet.\n");
-    return EXIT_FAILURE;
+  if(want_disconnect) return;
+
+  enet_initialize(); 
+
+  client = enet_host_create(NULL, 1, 1, 0, 0);
+  
+  enet_address_set_host(&address, server_address);
+  address.port = PORT;
+  server = enet_host_connect(client, &address, 1, 0);
+}
+
+Vector3 ReadPosition(ENetPacket* packet, size_t* offset)
+{
+  Vector3 pos = {0};
+  pos.x = ReadShort(packet, offset);
+  pos.y = ReadShort(packet, offset);
+  pos.z = ReadShort(packet, offset);
+
+  return pos;
+}
+
+
+void HandleAddPlayer(ENetPacket* packet, size_t* offset)
+{
+  int remote_player = ReadByte(packet, offset);
+  if(remote_player >= MAX_PLAYER_COUNT || remote_player == local_playerID) return;
+
+  players[remote_player].active = true;
+  players[remote_player].position = ReadPosition(packet, offset);
+  players[remote_player].direction = ReadPosition(packet, offset);
+  players[remote_player].update_time = last_now;
+
+}
+
+void HandleRemovePlayer(ENetPacket* packet, size_t* offset)
+{
+  int remote_player = ReadByte(packet, offset);
+  if(remote_player >= MAX_PLAYER_COUNT || remote_player == local_playerID) return;
+
+  players[remote_player].active = false;
+}
+
+void HandleMultiplayerUpdate(ENetPacket* packet, size_t* offset)
+{
+  int remote_player = ReadByte(packet, offset);
+  if(remote_player >= MAX_PLAYER_COUNT || remote_player == local_playerID) return;
+
+  players[remote_player].position = ReadPosition(packet, offset);
+  players[remote_player].direction = ReadPosition(packet, offset);
+  players[remote_player].update_time = last_now;
+
+}
+
+
+void EnetHandler(double now)
+{
+  last_now = now;
+
+  if(server == NULL) return;
+
+  if(!want_disconnect && local_playerID >= 0 && now - last_input_sent> input_update_interval)
+  {
+    uint8_t buffer[13] = {0};
+    buffer[0] = (uint8_t)update_input;
+		*(int16_t*)(buffer + 1) = (int16_t)players[local_playerID].position.x;
+		*(int16_t*)(buffer + 3) = (int16_t)players[local_playerID].position.y;
+		*(int16_t*)(buffer + 5) = (int16_t)players[local_playerID].position.z;
+		*(int16_t*)(buffer + 7) = (int16_t)players[local_playerID].direction.x;
+		*(int16_t*)(buffer + 9) = (int16_t)players[local_playerID].direction.y;
+		*(int16_t*)(buffer + 11) = (int16_t)players[local_playerID].direction.z;
+
+    packet = enet_packet_create(buffer, 13, ENET_PACKET_FLAG_RELIABLE);
+
+    enet_peer_send(server, 0, packet);
+
+    last_input_sent = now;
+
   }
 
-  ENetHost* client = { 0 };
-  client = enet_host_create(NULL /* create a client host */,
-    1 /* only allow 1 outgoing connection */,
-    2 /* allow up 2 channels to be used, 0 and 1 */,
-    0 /* assume any amount of incoming bandwidth */,
-    0 /* assume any amount of outgoing bandwidth */);
-  if (client == NULL) {
-    fprintf(stderr,
-      "An error occurred while trying to create an ENet client host.\n");
-    exit(EXIT_FAILURE);
-  }
-
-  ENetAddress address = { 0 };
-  ENetEvent event = { ENET_EVENT_TYPE_NONE };
-  ENetPeer* peer = { 0 };
-  /* Connect to some.server.net:1234. */
-  enet_address_set_host(&address, "127.0.0.1");
-  address.port = 7777;
-  /* Initiate the connection, allocating the two channels 0 and 1. */
-  peer = enet_host_connect(client, &address, 2, 0);
-  if (peer == NULL) {
-    fprintf(stderr,
-      "No available peers for initiating an ENet connection.\n");
-    exit(EXIT_FAILURE);
-  }
-  /* Wait up to 5 seconds for the connection attempt to succeed. */
-  if (enet_host_service(client, &event, 5000) > 0 &&
-    event.type == ENET_EVENT_TYPE_CONNECT) {
-    puts("Connection to some.server.net:1234 succeeded.");
-  } else {
-    /* Either the 5 seconds are up or a disconnect event was */
-    /* received. Reset the peer in the event the 5 seconds   */
-    /* had run out without any significant event.            */
-    enet_peer_reset(peer);
-    puts("Connection to some.server.net:1234 failed.");
-  }
-
-  // Receive some events
-  enet_host_service(client, &event, 5000);
-
-  // Disconnect
-  enet_peer_disconnect(peer, 0);
-
-  uint8_t disconnected = false;
-  /* Allow up to 3 seconds for the disconnect to succeed
-   * and drop any packets received packets.
-   */
-  while (enet_host_service(client, &event, 3000) > 0) {
-      switch (event.type) {
+  while(enet_host_service(client, &event, 0) > 0)
+  {
+    switch(event.type)
+    {
       case ENET_EVENT_TYPE_RECEIVE:
+        if(event.packet->dataLength < 1 || want_disconnect)
+        {
           enet_packet_destroy(event.packet);
           break;
+        }
+
+        size_t offset = 0;
+        NetworkCommands command = (NetworkCommands)ReadByte(event.packet, &offset);
+
+        if(local_playerID == -1)
+        {
+          if(command == accept_player)
+          {
+            local_playerID = ReadByte(event.packet, &offset);
+            if(local_playerID < 0 || local_playerID > MAX_PLAYER_COUNT)
+            {
+              local_playerID = -1;
+              break;
+            }
+
+            last_input_sent = -input_update_interval;
+
+            players[local_playerID].active = true;
+
+            players[local_playerID].position = (Vector3){0, 0, 0};
+          }
+        }
+        else
+        {
+          switch(command)
+          {
+            case add_player:
+              HandleAddPlayer(event.packet, &offset);
+              break;
+
+            case remove_player:
+              HandleRemovePlayer(event.packet, &offset);
+              break;
+
+            case update_player:
+              HandleMultiplayerUpdate(event.packet, &offset);
+              break;
+
+            default:
+              break;
+          }
+        }
+        enet_packet_destroy(event.packet);
+        break;
+
       case ENET_EVENT_TYPE_DISCONNECT:
-          puts("Disconnection succeeded.");
-          disconnected = true;
-          break;
-      }
-  }
+        if(client != NULL) enet_host_destroy(client);
 
-  // Drop connection, since disconnection didn't successed
-  if (!disconnected) {
-      enet_peer_reset(peer);
-  }
+        server = NULL;
+        enet_deinitialize();
 
+        server = NULL;
+        local_playerID = -1;
+
+        want_disconnect = false;
+
+        break;
+
+      default:
+        break;
+    }
+  }
+  if(server == NULL) client = NULL; // remove client pointer after while loop because it crashes otherwise
+  for(int i = 0; i < MAX_PLAYER_COUNT; i++)
+  {
+    if(i == local_playerID || !players[i].active) continue;
+
+    double delta = last_now - players[i].update_time;
+    players[i].extrapolated_position = Vector3Add(players[i].position, Vector3Scale(players[i].direction, (float)delta));
+  }
+}
+
+void Disconnect()
+{
+  if(server != NULL)
+  {
+    want_disconnect = true;
+    enet_peer_disconnect(server, 0);
+  }
+}
+
+bool Connected()
+{
+  if(server == NULL)return false;
+  else return true;
+}
+
+int GetLocalPlayerID()
+{
+  return local_playerID;
+}
+
+void UpdateLocalplayer(Vector3* movement_delta, float deltaT)
+{
+  if(local_playerID < 0) return;
+
+  players[local_playerID].position= Vector3Add(players[local_playerID].position, Vector3Scale(*movement_delta, deltaT));
+
+  if(players[local_playerID].position.y < 0) players[local_playerID].position.y = 0;
+
+  players[local_playerID].direction = *movement_delta;
+
+}
+
+bool GetPlayerPos(int id, Vector3* pos)
+{
+  if(id < 0 || id >= MAX_PLAYER_COUNT || !players[id].active)return false;
+
+  if(id == local_playerID) *pos = players[id].position;
+  else *pos = players[id].extrapolated_position;
+
+  return true;
+}
+
+int StopEnet()
+{
   enet_host_destroy(client);
   enet_deinitialize();
-
   return 0;
 }

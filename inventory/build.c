@@ -49,7 +49,7 @@ int main(int argc, char* argv[])
     printf("%.3f [INFO]: Found 'src' directory!\n", GET_TIME(time));
     strcat(command, "-I src ");
     file_path = LoadDirectoryFiles("src");
-    for(int i = 0; i < file_path.count; i++)
+    for(unsigned int i = 0; i < file_path.count; i++)
     {
       if(IsFileExtension(file_path.paths[i], ".c"))
       {
@@ -65,7 +65,20 @@ int main(int argc, char* argv[])
   else
   {
     printf("%.3f [INFO]: 'lib' directory found!\n", GET_TIME(time));
-    strcat(command, "-L lib -lraylib -lgdi32 -lwinmm -lws2_32 ");
+    strcat(command, "-L lib -lraylib -lgdi32 -lwinmm -lws2_32 -lpthread ");
+  }
+
+  printf("%.3f [INFO]: Checking for 'server', directory...\n", GET_TIME(time));
+  if(!DirectoryExists("server")){ printf("%.3f [FATAL]: No 'server' directory found, game will not compile as server is NEEDED to run\n", GET_TIME(time)); return 1;}
+  else
+  {
+    printf("%.3f [INFO]: 'server' directory found! Compiling server. \n", GET_TIME(time));
+    char server_compile[256] = "gcc server/mp_server.c src/mp_networking.c -lwinmm -lws2_32 -lpthread -Wall -Wextra -Wpedantic -o server";
+    printf("%.3f[INFO]: Compiling server with commands %s\n", GET_TIME(time), server_compile);
+    clock_t c_time = clock();
+    int success = system(server_compile);
+    if(success != 0){printf("%.3f [FATAL]: Compilation failed for server, please check compilation error log\n", GET_TIME(time)); return 1;}
+    else printf("%.3f [INFO]: Server succesfully compiled after %.3f seconds!\n", GET_TIME(time), GET_TIME(c_time));
   }
 
   strcat(command, "-Wall -Wextra -Wpedantic -o ");
@@ -76,12 +89,11 @@ int main(int argc, char* argv[])
   clock_t c_time = clock();
   int success = system(command);
 
-  if(success == 0)printf("%.3f [INFO]: Build compiled succesfully after %.3f seconds!\n",GET_TIME(time), GET_TIME(c_time));
-  
-  else{ printf("%.3f [FATAL]: Compilation failed! Please check Compile error log\n", GET_TIME(time)); return 1;}
-  
+  if(success != 0){printf("%.3f [FATAL]: Compilation failed! Please check Compile error log\n", GET_TIME(time)); return 1;}
 
-  if(auto_run == 1)
+  else printf("%.3f [INFO]: Build compiled succesfully after %.3f seconds!\n",GET_TIME(time), GET_TIME(c_time)); 
+
+  if(auto_run)
   {
     printf("%.3f [INFO]: Auto-running running %s\n", GET_TIME(time), name);
     system(name);
