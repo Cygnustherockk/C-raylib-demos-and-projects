@@ -182,7 +182,7 @@ int main(void)
   InitWindow(500, 500, "Game");
   SetTargetFPS(TARGET_FPS);
 
-  //DisableCursor();
+  DisableCursor();
 
   InitEnetGameClient(HOST);
 
