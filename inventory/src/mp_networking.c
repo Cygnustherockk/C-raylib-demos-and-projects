@@ -26,7 +26,7 @@ int16_t ReadShort(ENetPacket* packet, size_t* offset)
 	return *(int16_t*)data;
 }
 
-float ReadFloat(ENetPacket* packet, size_t* offset)
+float ReadFloat(ENetPacket* packet, size_t* offset) // I feel so smart for figuring this out :] maybe not the cleanest but it works!
 {
   if(*offset > packet->dataLength) return 0;
 

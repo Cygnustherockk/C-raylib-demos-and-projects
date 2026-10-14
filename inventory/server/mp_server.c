@@ -30,6 +30,8 @@ typedef struct PlayerData{
   float DX;
   float DY;
   float DZ;
+
+  int health;
 }PlayerData;
 
 PlayerData players[MAX_PLAYER_COUNT] = {0};
@@ -103,9 +105,11 @@ int main()
             enet_peer_disconnect(event.peer, 0);
             break;
           }
+          
           players[playerID].active = true;
           players[playerID].validPosition = false;
           players[playerID].peer = event.peer;
+          players[playerID].health = 100;
 
           uint8_t buffer[2] = {0};
 
@@ -118,7 +122,7 @@ int main()
           for(int i = 0; i < MAX_PLAYER_COUNT; i++)
           {
             if(i == playerID || !players[i].validPosition)continue;
-            uint8_t addBuffer[26] = {0};
+            uint8_t addBuffer[27] = {0};
             addBuffer[0] = (uint8_t)add_player;
             addBuffer[1] = (uint8_t)i;
             *(float*)(addBuffer+2) = (float)players[i].X;
@@ -127,8 +131,9 @@ int main()
             *(float*)(addBuffer+14) = (float)players[i].DX;
             *(float*)(addBuffer+18) = (float)players[i].DY;
             *(float*)(addBuffer+22) = (float)players[i].DZ;
+            addBuffer[26] = players[i].health;
 
-            packet = enet_packet_create(addBuffer, 26, ENET_PACKET_FLAG_RELIABLE);
+            packet = enet_packet_create(addBuffer, 27, ENET_PACKET_FLAG_RELIABLE);
             enet_peer_send(event.peer, 0, packet);
           }
         }
@@ -137,6 +142,7 @@ int main()
         case ENET_EVENT_TYPE_RECEIVE:
         {
           int playerID = GetPlayerId(event.peer);
+          int targetID = -1;
           if(playerID == -1)
           {
             printf("PlayerID is -1\n");
@@ -155,6 +161,11 @@ int main()
             players[playerID].DX = ReadFloat(event.packet, &offset);
             players[playerID].DY = ReadFloat(event.packet, &offset);
             players[playerID].DZ = ReadFloat(event.packet, &offset);
+            if(ReadByte(event.packet, &offset))
+            {
+              targetID = ReadByte(event.packet, &offset);
+              players[targetID].health -= ReadByte(event.packet, &offset);
+            }
 
             NetworkCommands outbound_command = update_player;
 
@@ -162,7 +173,7 @@ int main()
 
             players[playerID].validPosition = true;
 
-						uint8_t buffer[26] = { 0 };
+						uint8_t buffer[28] = { 0 };
 						buffer[0] = (uint8_t)outbound_command;
 						buffer[1] = (uint8_t)playerID;
 						*(float*)(buffer+2) = players[playerID].X;
@@ -171,8 +182,11 @@ int main()
 						*(float*)(buffer+14) = players[playerID].DX;
 						*(float*)(buffer+18) = players[playerID].DY;
 						*(float*)(buffer+22) = players[playerID].DZ;
+            buffer[26] = (uint8_t)targetID;
+            if(targetID != 255) buffer[27] = (uint8_t)players[targetID].health;
+            else buffer[27] = (uint8_t)0;
 
-						ENetPacket* packet = enet_packet_create(buffer, 26, ENET_PACKET_FLAG_RELIABLE);
+						ENetPacket* packet = enet_packet_create(buffer, 28, ENET_PACKET_FLAG_RELIABLE);
 						SendToAllBut(packet, playerID);
           }
         
