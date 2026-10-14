@@ -8,7 +8,8 @@ typedef enum{
   add_player = 2,
   remove_player = 3,
   update_player = 4,
-  update_input = 5
+  update_input = 5,
+  hurt_player = 6
 }NetworkCommands;
 
 #if (_WIN32_WINNT < 0x0601)

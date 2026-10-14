@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#define RAYGUI_IMPLEMENTATION
+#include "src/Third-Party/raygui.h"
 
 #include <unistd.h>
 #include <pthread.h>
@@ -11,8 +13,10 @@
 #include "terminal.h"
 
 #define ENET_IMPLEMENTATION
+#define RAYGUI_FONT_ICONS_BAKING
 #include "src/mp_client.h"
 
+#include "src/w_guns.h"
 
 #define GAME_ITEM ".gitm"
 
@@ -49,9 +53,25 @@ static Camera camera = { 0 };
 static Body player = {0};
 static Vector2 sensitivity = { 0.01f, 0.01f };
 
-static GameState game_state = Connecting;
+static GameConnectionState game_connection_state = Connecting;
+
+pthread_t thread;
 
 static bool run_game = true;
+static bool started_server = false;
+
+typedef enum{
+  MAIN_MENU,
+  SERVER_HOST,
+  SERVER_SELECT,
+  SETTINGS,
+  PLAYING_HOST,
+  PLAYING
+}GameState;
+
+static GameState game_state = MAIN_MENU;
+
+GameGunCollection game_guns = {0};
 
 void HandleLocalPlayerMovement()
 {
@@ -92,26 +112,38 @@ void HandleLocalPlayerMovement()
 
 void UpdateGame()
 {
-  EnetHandler(GetTime());
-  switch(game_state)
+  bool shot = false;
+  int targetID = -1;
+  Vector3 pos;
+  for(int i = 0; i < MAX_PLAYER_COUNT; i++)
+  {
+    if(GetPlayerPos(i, &pos))
+    {
+      if(IsKeyDown(KEY_P) && CanShoot(game_guns.gameGuns[0]) && i != GetLocalPlayerID()) 
+      {
+        shot = ShootGun(camera, pos); 
+        if(shot) targetID = i;
+      }
+    }
+  }
+  EnetHandler(GetTime(), shot, game_guns.gameGuns[0].damage, targetID);
+  switch(game_connection_state)
   {
     case Disconnected:
-      printf("Disconnected from server!\n");
       run_game = false;
 
     default: 
       break;
     
     case Connecting:
-      printf("connecting...\n");
-      if(Connected() == true && GetLocalPlayerID() >= 0){ game_state = Playing; printf("connected!\n");}
+      if(Connected() == true && GetLocalPlayerID() >= 0){ game_connection_state = Playing;}
       break;
 
     case Disconnecting:
-      printf("disconnecting\n");
+      GuiTextBox((Rectangle){200, 200, 100, 100}, "Disconnecting...", 24, false);
       if(Connected() == false)
       {
-        game_state = Disconnected;
+        game_connection_state = Disconnected;
       }
       break;
 
@@ -119,13 +151,13 @@ void UpdateGame()
       if(WindowShouldClose())
       {
         Disconnect();
-        game_state = Disconnecting;
+        game_connection_state = Disconnecting;
         break;
       }
       else if (Connected() == false)
       {
         InitEnetGameClient(HOST);
-        game_state = Connecting;
+        game_connection_state = Connecting;
         break;
       }
       else
@@ -140,10 +172,18 @@ void UpdateGame()
 
 void* server_thread(void* arg) // IGNORE THE COMPILE WARN, PTHREAD NEEDS FUNCTIONS TO HAVE A VOID ARG TO WORK, OR ELSE IT CRASHES
 {
-  char server_run_command[256] = "server/server";
+  started_server = true;
+  #ifdef _WIN32
+  char server_run_command[256] = "cd server && server.exe";
+  #endif
+  #ifdef __linux__
+  char server_run_command[256] = "./server/server";
+  #endif
   system(server_run_command);
   return NULL;
 }
+
+
 
 int main(void)
 {
@@ -170,21 +210,23 @@ int main(void)
   }
   printf("Parsed %d Items\n", path_list.count);
 
+  game_guns.gameGuns = malloc(sizeof(GameGun));
+
+  game_guns.gameGuns[0] = LoadGameGun(item_registry.items[0]);
+
+  game_guns.current_gun = 0;
+
+
   if(!DirectoryExists("server"))
   {
     printf("ERROR: No Server Path Found, Please Recompile Game To Fix This\n");
     return 1;
   }
-  pthread_t thread;
-
-  pthread_create(&thread, NULL, server_thread, NULL);
 
   InitWindow(500, 500, "Game");
   SetTargetFPS(TARGET_FPS);
 
   //DisableCursor();
-
-  InitEnetGameClient(HOST);
 
   camera.fovy = 60.0f;
   camera.projection = CAMERA_PERSPECTIVE;
@@ -192,25 +234,75 @@ int main(void)
 
   UpdateCameraFPS(&camera, &lookRotation, &lean, headTimer, walkLerp);
 
+  player.health = 100;
+
   while(run_game)
   {
     BeginDrawing();
-    BeginMode3D(camera);
-    UpdateGame();
-    ClearBackground(BLUE);
-    DrawCubeV((Vector3){0, 0, 0}, (Vector3){10, 10, 10}, RED);
-    for(int i = 0; i < MAX_PLAYER_COUNT; i++)
+    switch(game_state)
     {
-      Vector3 pos = {0};
+      case MAIN_MENU:
+      
+        ClearBackground(GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR)));
+        if(GuiButton((Rectangle){50, 100, 100, 50}, "Host Game"))game_state = SERVER_HOST; 
+        if(GuiButton((Rectangle){50, 150, 100, 50}, "Join Game"))game_state = SERVER_SELECT; 
+        if(GuiButton((Rectangle){50, 200, 100, 50}, "Quit Game")){run_game = false; Disconnect();}
+        if(WindowShouldClose()) {run_game = false; Disconnect();}
+        break;
 
-      if(GetPlayerPos(i, &pos))
-      {
-        DrawCubeV(pos, (Vector3){5, 10, 5}, GREEN);
-      }
+      case SERVER_HOST:
+        InitEnetGameClient(HOST);
+        game_state = PLAYING_HOST;
+        DisableCursor();
+        break;
+
+      case SERVER_SELECT:
+          ClearBackground(GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR)));
+          char textbuffer[256] = "127.0.0.1";
+          int join_btn = -1;
+          GuiTextInputBox((Rectangle){100, 100, 200, 200}, "Server Select.", "Please Input A Valid IP Address", textbuffer, 12, "Join Server", &join_btn, false);
+          if(join_btn == 0) game_state = MAIN_MENU;
+          if(join_btn == 1){ InitEnetGameClient(textbuffer); game_state = PLAYING; DisableCursor();}
+          break;
+
+      
+      case PLAYING_HOST:
+        if(!started_server) pthread_create(&thread, NULL, server_thread, NULL);
+        game_state = PLAYING;
+        break;
+      
+      case PLAYING:
+        BeginMode3D(camera);
+        UpdateGame();
+        SetMousePosition(250, 250);
+        ClearBackground(BLUE);
+        DrawCubeV((Vector3){0, 0, 0}, (Vector3){10, 10, 10}, RED);
+        for(int i = 0; i < MAX_PLAYER_COUNT; i++)
+        {
+          Vector3 pos = {0};
+          if(GetPlayerPos(i, &pos))
+          {
+            DrawCubeV(pos, (Vector3){5, 10, 5}, GREEN);
+            DrawBoundingBox((BoundingBox){(Vector3){pos.x - 2.5, pos.y - 5, pos.z - 2.5}, (Vector3){pos.x + 2.5, pos.y + 5, pos.z + 2.5}}, BLACK);
+          }
+        }
+        EndMode3D();
+
+
+
+        if(game_connection_state == Connecting){ ClearBackground(GetColor(GuiGetStyle(DEFAULT, BACKGROUND_COLOR))); GuiLabel((Rectangle){200, 200, 100, 100}, "Connecting...");}
+        int hp = 0;
+        if(GetPlayerHP(GetLocalPlayerID(), &hp)) DrawText(TextFormat("Player:%d, HP:%d", GetLocalPlayerID(), hp), 10, 10, 24, RED);
+        
+        DrawRectangle(248, 248, 4, 4, BLACK);
+        //HandleTerminal();
+        break;
+
+      default:
+        break;
+
+      
     }
-
-    EndMode3D();
-    //HandleTerminal();
     EndDrawing();
   }
   StopEnet();

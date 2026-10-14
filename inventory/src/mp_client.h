@@ -16,10 +16,10 @@ typedef enum{
   Playing,
   Disconnecting, 
   Disconnected
-}GameState;
+}GameConnectionState;
 
 void InitEnetGameClient(const char* server_address); //Start Client for player to communicate with server
-void EnetHandler(double now); //Handle enet client, should be processed during main raylib window loop
+void EnetHandler(double now, bool shot, int shotDamage, int targetID); //Handle enet client, should be processed during main raylib window loop
 int StopEnet(); //Kills enet user
 int EnetSendKillPacketToServer(); //Kill the server
 bool Connected();
@@ -28,5 +28,6 @@ void Disconnect();
 bool GetPlayerPos(int id, Vector3* pos);
 void UpdateLocalplayer(Vector3* movement_delta, float deltaT);
 void InitEnetGameClient(const char* server_address);
+bool GetPlayerHP(int id, int* health);
 
 #endif

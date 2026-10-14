@@ -2,6 +2,9 @@
 
 int local_playerID = -1;
 
+bool canShootWhenReady = false;
+int targetIDWhenReady = -1;
+
 ENetHost *client = {0};
 ENetAddress address = {0};
 ENetEvent event = {0};
@@ -23,6 +26,7 @@ typedef struct RemotePlayer{
   Vector3 direction;
   double update_time;
   Vector3 extrapolated_position;
+  int health;
 }RemotePlayer;
 
 RemotePlayer players[MAX_PLAYER_COUNT] = {0};
@@ -38,14 +42,15 @@ void InitEnetGameClient(const char* server_address)
   enet_address_set_host(&address, server_address);
   address.port = PORT;
   server = enet_host_connect(client, &address, 1, 0);
+  if(server == NULL) printf("Failed to connect to server!\n");
 }
 
 Vector3 ReadPosition(ENetPacket* packet, size_t* offset)
 {
   Vector3 pos = {0};
-  pos.x = ReadShort(packet, offset);
-  pos.y = ReadShort(packet, offset);
-  pos.z = ReadShort(packet, offset);
+  pos.x = ReadFloat(packet, offset);
+  pos.y = ReadFloat(packet, offset);
+  pos.z = ReadFloat(packet, offset);
 
   return pos;
 }
@@ -59,6 +64,7 @@ void HandleAddPlayer(ENetPacket* packet, size_t* offset)
   players[remote_player].active = true;
   players[remote_player].position = ReadPosition(packet, offset);
   players[remote_player].direction = ReadPosition(packet, offset);
+  players[remote_player].health = 100;
   players[remote_player].update_time = last_now;
 
 }
@@ -78,33 +84,46 @@ void HandleMultiplayerUpdate(ENetPacket* packet, size_t* offset)
 
   players[remote_player].position = ReadPosition(packet, offset);
   players[remote_player].direction = ReadPosition(packet, offset);
+  int targetID = ReadByte(packet, offset);
+  if(targetID != 255){ players[targetID].health = ReadByte(packet, offset);}
+  
   players[remote_player].update_time = last_now;
 
 }
 
 
-void EnetHandler(double now)
+void EnetHandler(double now, bool shot, int shotDamage, int targetID)
 {
   last_now = now;
+  if(shot) canShootWhenReady = true;
+  if(targetID != -1) targetIDWhenReady = targetID;
 
   if(server == NULL) return;
 
   if(!want_disconnect && local_playerID >= 0 && now - last_input_sent> input_update_interval)
   {
-    uint8_t buffer[13] = {0};
+    uint8_t buffer[28] = {0};
     buffer[0] = (uint8_t)update_input;
-		*(int16_t*)(buffer + 1) = (int16_t)players[local_playerID].position.x;
-		*(int16_t*)(buffer + 3) = (int16_t)players[local_playerID].position.y;
-		*(int16_t*)(buffer + 5) = (int16_t)players[local_playerID].position.z;
-		*(int16_t*)(buffer + 7) = (int16_t)players[local_playerID].direction.x;
-		*(int16_t*)(buffer + 9) = (int16_t)players[local_playerID].direction.y;
-		*(int16_t*)(buffer + 11) = (int16_t)players[local_playerID].direction.z;
+		*(float*)(buffer+1) = players[local_playerID].position.x;
+		*(float*)(buffer+5) = players[local_playerID].position.y;
+		*(float*)(buffer+9) = players[local_playerID].position.z;
+		*(float*)(buffer+13) = players[local_playerID].direction.x;
+		*(float*)(buffer+17) = players[local_playerID].direction.y;
+		*(float*)(buffer+21) = players[local_playerID].direction.z;
+    buffer[25] = (uint8_t)canShootWhenReady;
+    buffer[26] = (uint8_t)targetIDWhenReady;
+    buffer[27] = (uint8_t)shotDamage;
 
-    packet = enet_packet_create(buffer, 13, ENET_PACKET_FLAG_RELIABLE);
+    if(canShootWhenReady){ players[targetID].health -= shotDamage;}
+
+
+    packet = enet_packet_create(buffer, 28, ENET_PACKET_FLAG_RELIABLE);
 
     enet_peer_send(server, 0, packet);
 
     last_input_sent = now;
+    if(canShootWhenReady) targetIDWhenReady = -1;
+    canShootWhenReady = false;
 
   }
 
@@ -136,6 +155,8 @@ void EnetHandler(double now)
             last_input_sent = -input_update_interval;
 
             players[local_playerID].active = true;
+
+            players[local_playerID].health = 100;
 
             players[local_playerID].position = (Vector3){0, 0, 0};
           }
@@ -228,6 +249,15 @@ bool GetPlayerPos(int id, Vector3* pos)
 
   if(id == local_playerID) *pos = players[id].position;
   else *pos = players[id].extrapolated_position;
+
+  return true;
+}
+
+bool GetPlayerHP(int id, int* health)
+{
+  if(id < 0 || id >= MAX_PLAYER_COUNT || !players[id].active)return false;
+
+  *health = players[id].health; 
 
   return true;
 }
